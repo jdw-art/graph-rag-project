@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="llm_env" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="llm_env" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="/opt/miniconda3/envs/llm-dev" project-jdk-type="Python SDK" />
 </project>
