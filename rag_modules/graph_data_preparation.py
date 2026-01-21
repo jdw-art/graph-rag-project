@@ -300,5 +300,144 @@ class GraphDataPreparationModule:
         logger.info(f"成功构建 {len(self.documents)} 个文档")
         return documents
 
+    def chunk_documents(self, chunk_size: int = 500, chunk_overlap: int = 50) -> List[Document]:
+        """
+        对文档进行分块处理
+        :param chunk_size: 分块大小
+        :param chunk_overlap:  重叠大小
+        :return: 分块后的文档列表
+        """
+        logger.info(f"正在进行文档分块，块大小: {chunk_size}, 重叠: {chunk_overlap}")
 
+        if not self.documents:
+            raise ValueError("请先构建文档")
+
+        chunks = []
+        chunk_id = 0
+
+        for doc in self.documents:
+            content = doc.page_content
+
+            # 简单的按长度分块
+            if len(content) <= chunk_size:
+                # 内容较短，不需要分块
+                chunk = Document(
+                    page_content=content,
+                    metadata={
+                        **doc.metadata,
+                        "chunk_id": f"{doc.metadata['node_id']}_chunk_{chunk_id}",
+                        "parent_id": doc.metadata["node_id"],
+                        "chunk_index": 0,
+                        "total_chunks": 1,
+                        "chunk_size": len(content),
+                        "doc_type": "chunk"
+                    }
+                )
+                chunks.append(chunk)
+                chunk_id += 1
+            else:
+                # 按章节分块（基于标题）
+                sections = content.split('\n## ')
+                if len(sections) <= 1:
+                    # 没有二级标题，按长度强制分块
+                    total_chunks = (len(content) - 1) // (chunk_size - chunk_overlap) + 1
+
+                    for i in range(total_chunks):
+                        start = i * (chunk_size - chunk_overlap)
+                        end = min(start + chunk_size, len(content))
+
+                        chunk_content = content[start:end]
+
+                        chunk = Document(
+                            page_content=chunk_content,
+                            metadata={
+                                **doc.metadata,
+                                "chunk_id": f"{doc.metadata['node_id']}_chunk_{chunk_id}",
+                                "parent_id": doc.metadata["node_id"],
+                                "chunk_index": i,
+                                "total_chunks": total_chunks,
+                                "chunk_size": len(chunk_content),
+                                "doc_type": "chunk"
+                            }
+                        )
+
+                        chunks.append(chunk)
+                        chunk_id += 1
+
+                else:
+                    # 按章节分块
+                    total_chunks = len(sections)
+                    for i, section in enumerate(sections):
+                        if i == 0:
+                            # 第一部分包含标题
+                            chunk_content = section
+                        else:
+                            # 其他部分添加章节标题
+                            chunk_content = f"## {section}"
+
+                        chunk = Document(
+                            page_content=chunk_content,
+                            metadata={
+                                **doc.metadata,
+                                "chunk_id": f"{doc.metadata['node_id']}_chunk_{chunk_id}",
+                                "parent_id": doc.metadata["node_id"],
+                                "chunk_index": i,
+                                "total_chunks": total_chunks,
+                                "chunk_size": len(chunk_content),
+                                "doc_type": "chunk",
+                                "section_title": section.split('\n')[0] if i > 0 else "主标题"
+                            }
+                        )
+
+                        chunks.append(chunk)
+                        chunk_id += 1
+
+        self.chunks = chunks
+        logger.info(f"文本分块完成，共 {len(chunks)} 个块")
+        return chunks
+
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        获取数据统计信息
+        :return: 统计信息字典
+        """
+        stats = {
+            "total_recipes": len(self.recipes),
+            "total_ingredients": len(self.ingredients),
+            "total_cooking_steps": len(self.cooking_step),
+            "total_documents": len(self.documents),
+            "total_chunks": len(self.chunks)
+        }
+
+        if self.documents:
+            # 分类统计
+            categories = {}
+            cuisines = {}
+            difficulties = {}
+
+            for doc in self.documents:
+                category = doc.metadata.get("category", "未知")
+                categories[category] = categories.get(category, 0) + 1
+
+                cuisine = doc.metadata.get("cuisine_type", "未知")
+                cuisines[cuisine] = cuisines.get(cuisine, 0) + 1
+
+                difficulty = doc.metadata.get("difficulty", 0)
+                difficulties[str(difficulty)] = difficulties.get(str(difficulty), 0) + 1
+
+            stats.update({
+                'categories': categories,
+                'cuisines': cuisines,
+                'difficulties': difficulties,
+                'avg_content_length': sum(doc.metadata.get('content_length', 0) for doc in self.documents) / len(
+                    self.documents),
+                'avg_chunk_size': sum(chunk.metadata.get('chunk_size', 0) for chunk in self.chunks) / len(
+                    self.chunks) if self.chunks else 0
+            })
+        return stats
+
+    def __del__(self):
+        """析构函数，确保连接关闭"""
+        self.close()
 
