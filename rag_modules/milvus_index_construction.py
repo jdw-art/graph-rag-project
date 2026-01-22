@@ -428,6 +428,9 @@ class MilvusIndexConstructionModule:
                 logger.info(f"集合 {self.collection_name} 删除成功")
                 self.collection_created = False
                 return False
+            else:
+                logger.info(f"集合 {self.collection_name} 不存在")
+                return False
         except Exception as e:
             logger.error(f"删除集合失败: {e}")
             return False
