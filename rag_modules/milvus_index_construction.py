@@ -1,7 +1,7 @@
 """ Milvus 索引构建模块 """
 import logging
 import time
-from typing import List
+from typing import List, Optional, Dict, Any
 
 from accelerate.test_utils.scripts.external_deps.test_ds_alst_ulysses_sp import model_name
 from langchain_core.documents import Document
@@ -265,4 +265,212 @@ class MilvusIndexConstructionModule:
         :param new_chunks: 新的文本分块
         :return: 是否添加成功
         """
-        # todo:
+
+        if not self.collection_created:
+            raise ValueError("请先构建索引")
+
+        logger.info(f"正在添加 {len(new_chunks)} 个新文档到索引...")
+
+        try:
+            # 生成向量
+            texts = [chunk.page_content for chunk in new_chunks]
+            vectors = self.embeddings.embed_documents(texts)
+
+            # 准备插入数据
+            entities = []
+            for i, (chunk, vector) in enumerate(zip(new_chunks, vectors)):
+                entity = {
+                    "id": self._safe_truncate(chunk.metadata.get("chunk_id", f"new_chunk_{i}_{int(time.time())}"), 150),
+                    "vector": vector,
+                    "text": self._safe_truncate(chunk.page_content, 15000),
+                    "node_id": self._safe_truncate(chunk.metadata.get("node_id", ""), 100),
+                    "recipe_name": self._safe_truncate(chunk.metadata.get("recipe_name", ""), 300),
+                    "node_type": self._safe_truncate(chunk.metadata.get("node_type", ""), 100),
+                    "category": self._safe_truncate(chunk.metadata.get("category", ""), 100),
+                    "cuisine_type": self._safe_truncate(chunk.metadata.get("cuisine_type", ""), 200),
+                    "difficulty": int(chunk.metadata.get("difficulty", 0)),
+                    "doc_type": self._safe_truncate(chunk.metadata.get("doc_type", ""), 50),
+                    "chunk_id": self._safe_truncate(chunk.metadata.get("chunk_id", f"new_chunk_{i}_{int(time.time())}"),
+                                                    150),
+                    "parent_id": self._safe_truncate(chunk.metadata.get("parent_id", ""), 100)
+                }
+
+                entities.append(entity)
+
+            # 插入数据
+            self.client.insert(
+                collection_name=self.collection_name,
+                data=entities
+            )
+
+            logger.info("新文档添加完成")
+            return True
+
+        except Exception as e:
+            logger.error(f"添加新文档失败: {e}")
+
+    def similarity_search(self, query: str, k: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """
+        相似度搜索
+        :param query: 查询文本
+        :param k: 返回结果数量
+        :param filters: 过滤条件
+        :return: 搜索结果列表
+        """
+        if not self.collection_created:
+            raise ValueError("请先构建或加载向量索引")
+
+        try:
+            # 生成查询向量
+            query_vector = self.embeddings.embed_documents(query)
+
+            # 构建过滤表达式
+            filter_expr = ""
+            if filters:
+                filter_conditions = []
+                for key, value in filters.items():
+                    if isinstance(value, str):
+                        filter_conditions.append(f'{key} == "{value}"')
+                    elif isinstance(value, (int, float)):
+                        filter_conditions.append(f'{key} == {value}')
+                    elif isinstance(value, list):
+                        # 支持 IN 操作
+                        if all(isinstance(v, str) for v in value):
+                            value_str = '", "'.join(value)
+                            filter_conditions.append(f'{key} in ["{value_str}"]')
+                        else:
+                            value_str = ', '.join(map(str, value))
+                            filter_conditions.append(f'{key} in [{value_str}]')
+
+                if filter_conditions:
+                    filter_expr = " and ".join(filter_conditions)
+
+            # 执行搜索 - 修复参数传递
+            search_params = {
+                "metric_type": "COSINE",
+                "params": {"ef": 64}
+            }
+
+            # 构建搜索参数，避免重复传递
+            search_kwargs = {
+                "collection_name": self.collection_name,
+                "data": [query_vector],
+                "anns_field": "vector",
+                "limit": k,
+                "output_field": ["text", "node_id", "recipe_name", "node_type",
+                                 "category", "cuisine_type", "difficulty", "doc_type",
+                                 "chunk_id", "parent_id"],
+                "search_params": search_params
+            }
+
+            # 只有在有过滤条件是才添加filters参数
+            if filter_expr:
+                search_kwargs["filter"] = filter_expr
+
+            results = self.client.search(**search_kwargs)
+
+            # 处理结果
+            formatted_results = []
+            if results and len(results) > 0:
+                for hit in results[0]:  # result[0]因为只发送了一个查询向量
+                    result = {
+                        "id": hit["id"],
+                        "score": hit["distance"],  # 注意：在COSINE距离中，值越大相似度越高
+                        "text": hit["entity"]["text"],
+                        "metadata": {
+                            "node_id": hit["entity"]["node_id"],
+                            "recipe_name": hit["entity"]["recipe_name"],
+                            "node_type": hit["entity"]["node_type"],
+                            "category": hit["entity"]["category"],
+                            "cuisine_type": hit["entity"]["cuisine_type"],
+                            "difficulty": hit["entity"]["difficulty"],
+                            "doc_type": hit["entity"]["doc_type"],
+                            "chunk_id": hit["entity"]["chunk_id"],
+                            "parent_id": hit["entity"]["parent_id"]
+                        }
+                    }
+                    formatted_results.append(result)
+
+            return formatted_results
+
+        except Exception as e:
+            logger.error(f"相似度搜索失败: {e}")
+            return []
+
+    def get_collection_stats(self) -> Dict[str, Any]:
+        """
+        获取集合统计信息
+        :return: 统计信息字典
+        """
+        try:
+            if not self.collection_created:
+                return {"error": "集合未创建"}
+
+            stats = self.client.get_collection_stats(self.collection_name)
+            return {
+                "collection_name": self.collection_name,
+                "row_count": stats.get("row_count", 0),
+                "index_building_progress": stats.get("index_building_progress", 0),
+                "stats": stats
+            }
+        except Exception as e:
+            logger.error(f"获取集合统计信息失败: {e}")
+            return {"error": str(e)}
+
+    def delete_collection(self) -> bool:
+        """
+        删除集合
+        :return: 是否删除成功
+        """
+        try:
+            if self.client.has_collection(self.collection_name):
+                self.client.drop_collection(self.collection_name)
+                logger.info(f"集合 {self.collection_name} 删除成功")
+                self.collection_created = False
+                return False
+        except Exception as e:
+            logger.error(f"删除集合失败: {e}")
+            return False
+
+    def has_collection(self) -> bool:
+        """
+        检查集合是否存在
+        :return: 集合是否存在
+        """
+        try:
+            return self.client.has_collection(self.collection_name)
+        except Exception as e:
+            logger.error(f"集合存在性检查失败: {e}")
+            return False
+
+
+    def load_collection(self) -> bool:
+        """
+        加载集合到内存
+        :return: 是否加载成功
+        """
+        try:
+            if not self.client.has_collection(self.collection_name):
+                logger.error(f"集合 {self.collection_name} 不存在")
+                return False
+            self.client.load_collection(self.collection_name)
+            self.collection_created = True
+            logger.info(f"集合 {self.collection_name} 已加载到内存")
+            return True
+
+        except Exception as e:
+            logger.error(f"加载集合失败: {e}")
+            return False
+
+    def close(self):
+        """
+        关闭连接
+        :return:
+        """
+        if hasattr(self, 'client') and self.client:
+            # Milvus客户端不需要显示关闭
+            logger.info("Milvus连接已关闭")
+
+    def __del__(self):
+        """析构函数"""
+        self.close()
