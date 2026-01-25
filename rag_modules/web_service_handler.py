@@ -37,7 +37,8 @@ class WebServiceHandlerModule:
             self.app = Flask(__name__)
             CORS(self.app)
 
-            # todo: 设置路由
+            # 设置路由
+            self._setup_route()
 
             return self.app
         except ImportError as e:
