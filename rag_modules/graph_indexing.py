@@ -8,7 +8,7 @@ import json
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from sympy.physics.units import temperature
 

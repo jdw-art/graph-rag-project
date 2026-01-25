@@ -60,7 +60,7 @@ class HybridRetrievalModule:
 
         # 连接Neo4j
         self.driver = GraphDatabase.driver(
-            self.config.driver,
+            self.config.neo4j_uri,
             auth=(self.config.neo4j_user, self.config.neo4j_password)
         )
 
@@ -88,7 +88,7 @@ class HybridRetrievalModule:
             self.graph_indexing.create_entity_key_values(recipes, ingredients, cooking_steps)
 
             # 创建关系键值对
-            # todo: 从Ne4j中获取关系数据
+            # 从Ne4j中获取关系数据
             relationships = self._extract_relationships_from_graph()
             self.graph_indexing.create_relation_key_values(relationships)
 

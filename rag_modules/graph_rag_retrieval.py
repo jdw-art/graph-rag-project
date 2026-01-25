@@ -81,7 +81,7 @@ class GraphRagRetrievalModule:
         try:
             self.driver = GraphDatabase.driver(
                 self.config.neo4j_uri,
-                auth=(self.config.neo4j_username, self.config.neo4j_password),
+                auth=(self.config.neo4j_user, self.config.neo4j_password),
             )
             # 测试连接
             with self.driver.session() as session:

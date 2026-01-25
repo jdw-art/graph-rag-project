@@ -11,7 +11,7 @@ from typing import Optional, List
 
 from dotenv import load_dotenv
 
-from config import GraphRAGConfig
+from config import GraphRAGConfig, DEFAULT_CONFIG
 from rag_modules import GraphDataPreparationModule, MilvusIndexConstructionModule, GenerationIntegrationModule, \
     HybridRetrievalModule
 from rag_modules.graph_rag_retrieval import GraphRagRetrievalModule
@@ -392,5 +392,5 @@ def main():
         traceback.print_exc()
         print(f"\n ❌ 系统运行失败: {e}")
 
-# 默认配置实例
-DEFAULT_CONFIG = GraphRAGConfig()
+if __name__ == "__main__":
+    main()

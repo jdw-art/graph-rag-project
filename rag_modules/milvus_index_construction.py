@@ -3,7 +3,6 @@ import logging
 import time
 from typing import List, Optional, Dict, Any
 
-from accelerate.test_utils.scripts.external_deps.test_ds_alst_ulysses_sp import model_name
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from pymilvus import MilvusClient, CollectionSchema, FieldSchema, DataType

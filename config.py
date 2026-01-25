@@ -71,3 +71,6 @@ class GraphRAGConfig:
             'chunk_overlap': self.chunk_overlap,
             'max_graph_depth': self.max_graph_depth
         }
+
+# 默认配置实例
+DEFAULT_CONFIG = GraphRAGConfig()

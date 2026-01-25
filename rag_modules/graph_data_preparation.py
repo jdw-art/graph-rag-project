@@ -90,7 +90,7 @@ class GraphDataPreparationModule:
             OPTIONAL MATCH (r)-[:BELONGS_TO]->(c:Category)
             WITH r, collect(c.name) as categories
             RETURN r.nodeId as nodeId, labels(r) as labels, r.name as name,
-                    properties(r) as originalProperties
+                    properties(r) as originalProperties,
                     CASE WHEN size(categories) > 0
                         THEN categories[0]
                         ELSE COALESCE(r.category, '未知') END as mainCategory,
@@ -107,7 +107,7 @@ class GraphDataPreparationModule:
                 # 合并原始数据和新的分类信息
                 properties = dict(record["originalProperties"])
                 properties["category"] = record["mainCategory"]
-                properties["all_categories"] = record["allCategory"]
+                properties["all_categories"] = record["allCategories"]
 
                 node = GraphNode(
                     node_id=record["nodeId"],
@@ -188,14 +188,14 @@ class GraphDataPreparationModule:
 
                     # 获取菜谱相关食材
                     ingredients_query = """
-                    MATCH (r:Recipe {nodeId: $recipe_id})-[req:REQUIRES]->(i:Ingredient)
-                    RETURN i.name as name, i.category as category,
-                           req.amount as amount, req.unit as unit,
-                           i.description as description
-                    ORDER BY i.name
-                    """
+                                        MATCH (r:Recipe {nodeId: $recipe_id})-[req:REQUIRES]->(i:Ingredient)
+                                        RETURN i.name as name, i.category as category, 
+                                               req.amount as amount, req.unit as unit,
+                                               i.description as description
+                                        ORDER BY i.name
+                                        """
 
-                    ingredients_result = session.run(ingredients_query)
+                    ingredients_result = session.run(ingredients_query, {"recipe_id": recipe_id})
                     ingredients_info = []
                     for ing_record in ingredients_result:
                         amount = ing_record.get("amount", "")
