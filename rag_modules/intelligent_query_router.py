@@ -4,12 +4,16 @@
 - 传统混合检索：适合简单的信息查找
 - 图RAG检索：适合复杂的关系推理和知识发现
 """
+import concurrent.futures
 import json
 import logging
+from concurrent.futures.thread import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Any
 from xml.dom.minidom import Document
+
+from dotenv import set_key
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +47,11 @@ class IntelligentQueryRouterModule:
 
     def __init__(self,
                  traditional_retrieval, # 传统混合检索
-                 graph_retrieval,       # 图RAG检索
+                 graph_rag_retrieval,       # 图RAG检索
                  llm_client,
                  config):
         self.traditional_retrieval = traditional_retrieval
-        self.graph_retrieval = graph_retrieval
+        self.graph_rag_retrieval = graph_rag_retrieval
         self.llm_client = llm_client
         self.config = config
 
@@ -173,4 +177,170 @@ class IntelligentQueryRouterModule:
         """
         logger.info("开始智能路由...")
 
-        # todo: 智能路由查询
+        # 1. 分析查询特征
+        analysis = self.analyze_query(query)
+
+        # 2. 更新统计
+        self._update_route_stats(analysis.recommended_strategy)
+
+        # 3. 根据策略执行检索
+        documents = []
+
+        try:
+            if analysis.recommended_strategy == SearchStrategy.HYBRID_TRADITIONAL:
+                logger.info("使用传统混合检索")
+                # 传统混合检索
+                documents = self.traditional_retrieval.hybrid_search(query, top_k)
+
+            elif analysis.recommended_strategy == SearchStrategy.GRAPH_RAG:
+                logger.info("使用图RAG检索策略")
+                # 图RAG检索
+                documents = self.graph_rag_retrieval.graph_rag_search(query, top_k)
+
+            elif analysis.recommended_strategy == SearchStrategy.COMBINED:
+                logger.info("使用组合检索策略")
+                # 组合检索
+                documents = self._combined_search(query, top_k)
+
+        except Exception as e:
+            logger.error(f"智能查询路由失败: {e}")
+            # todo: 降级到传统检索策略
+            documents = self.traditional_retrieval.hybrid_search(query, top_k)
+            return documents, analysis
+
+    def _combined_search(self, query: str, top_k: int = 3) -> List[Document]:
+        """
+        组合检索策略，并行执行传统混合检索和图RAG检索
+        :param query: 查询
+        :param tok_k: 符合的前k个结果
+        :return:
+        """
+
+        # 分配结果数量
+        traditional_k = max(1, top_k // 2)
+        graph_k = top_k - traditional_k
+
+        # 并行执行两种检索
+        traditional_docs = []
+        graph_docs = []
+
+        def traditional_search():
+            # 传统混合检索
+            nonlocal traditional_docs
+            try:
+                traditional_docs = self.traditional_retrieval.hybrid_search(query, traditional_k)
+                logger.info(f"传统检索完成: {len(traditional_docs)} 个结果")
+            except Exception as e:
+                logger.info(f"传统混合检索失败: {e}")
+                traditional_docs = []
+
+        def graph_search():
+            # todo: 图RAG检索
+            nonlocal graph_docs
+            try:
+                graph_docs = self.graph_rag_retrieval.graph_rag_search(query, graph_k)
+                logger.info(f"图RAG检索完成: {len(graph_docs)} 个结果")
+            except Exception as e:
+                logger.info(f"图RAG检索失败: {e}")
+                graph_docs = []
+
+        # 使用线程池并行执行
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            future_traditional = executor.submit(traditional_search)
+            future_graph = executor.submit(graph_search)
+
+            # 等待两个检索完成
+            concurrent.futures.wait([future_traditional, future_graph], timeout=30)
+
+        # 合并去重
+        combined_docs = []
+        seen_contents = set()
+
+        # 交替添加结果（Round-robin）
+        max_len = max(len(traditional_docs), len(graph_docs))
+        for i in range(max_len):
+            # 先添加图RAG检索结果（通常质量更高）
+            if i < len(graph_docs):
+                doc = graph_docs[i]
+                content_hash = hash(doc.page_content[:100])
+                if content_hash not in seen_contents:
+                    seen_contents.add(content_hash)
+                    doc.metadata["search_source"] = "graph_rag"
+                    combined_docs.append(doc)
+
+            # 再添加传统检索结果
+            if i < len(traditional_docs):
+                doc = traditional_docs[i]
+                content_hash = hash(doc.page_content[:100])
+                if content_hash not in seen_contents:
+                    seen_contents.add(content_hash)
+                    doc.metadata["search_source"] = "traditional"
+                    combined_docs.append(doc)
+
+        return combined_docs[:top_k]
+
+    def _post_process_results(self, documents: List[Document], analysis: QueryAnalysis) -> List[Document]:
+        """结果后处理：根据查询分析优化结果"""
+        for doc in documents:
+            # 添加路由信息到元数据
+            doc.metadata.update({
+                "route_strategy": analysis.recommended_strategy.value,
+                "query_complexity": analysis.query_complexity,
+                "route_confidence": analysis.confidence
+            })
+
+        return documents
+
+    def _update_route_stats(self, strategy: SearchStrategy):
+        """更新路由统计"""
+        self.route_stats["total_queries"] += 1
+
+        if strategy == SearchStrategy.HYBRID_TRADITIONAL:
+            self.route_stats["traditional_count"] += 1
+        elif strategy == SearchStrategy.GRAPH_RAG:
+            self.route_stats["graph_rag_count"] += 1
+        elif strategy == SearchStrategy.COMBINED:
+            self.route_stats["combined_count"] += 1
+
+    def get_route_statistics(self) -> Dict[str, Any]:
+        """
+        获取路由统计信息
+        :return:
+        """
+        total = self.route_stats["total_queries"]
+        if total == 0:
+            return self.route_stats
+
+        return {
+            **self.route_stats,
+            "traditional_ratio": self.route_stats["traditional_count"] / total,
+            "graph_rag_ratio": self.route_stats["graph_rag_count"] / total,
+            "combined_ratio": self.route_stats["combined_count"] / total,
+        }
+
+    def explain_routing_decision(self, query: str) -> str:
+        """
+        解释路由决策过程
+        :param query:
+        :return:
+        """
+        analysis = self.analyze_query(query)
+
+        explanation = f"""
+        查询路由分析报告
+        
+        查询: {query}
+        
+        特征分析：
+        - 复杂度： {analysis.query_complexity:.2f} ({'简单' if analysis.query_complexity < 0.4 else '中等' if analysis.query_complexity < 0.8 else '复杂'})
+        - 关系密集度：{analysis.relationship_intensity} ({'单一实体' if analysis.relationship_intensity < 0.4 else '实体关系' if analysis.relationship_intensity < 0.8 else '复杂关系网络'})
+        - 推理需求：{'是' if analysis.reasoning_required else '否'}
+        - 实体数量：{analysis.entity_count}
+        
+        推荐策略：{analysis.recommended_strategy.value}
+        置信度：{analysis.confidence:.2f}
+        
+        决策理由：{analysis.reasoning}
+        """
+
+        return explanation
