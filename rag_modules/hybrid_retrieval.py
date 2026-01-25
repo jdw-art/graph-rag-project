@@ -168,9 +168,9 @@ class HybridRetrievalModule:
         """
 
         try:
-            response = self.llm_client.chat.completion.create(
+            response = self.llm_client.chat.completions.create(
                 model=self.config.llm_model,
-                message=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=500
             )
@@ -553,7 +553,7 @@ class HybridRetrievalModule:
             logger.info(f"增强向量检索失败: {e}")
             return []
 
-    def hybrid_retrieval(self, query: str, top_k: int = 5) -> List[Document]:
+    def hybrid_search(self, query: str, top_k: int = 5) -> List[Document]:
         """
         混合检索：并行执行多种检索策略
         :param query:

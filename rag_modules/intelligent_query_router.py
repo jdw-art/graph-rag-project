@@ -115,7 +115,7 @@ class IntelligentQueryRouterModule:
         try:
             response = self.llm_client.chat.completions.create(
                 model=self.config.llm_model,
-                message=[{"role": "user", "content": query}],
+                messages=[{"role": "user", "content": analysis_prompt}],
                 temperature=0.1,
                 max_tokens=800
             )
@@ -202,6 +202,12 @@ class IntelligentQueryRouterModule:
                 # 组合检索
                 documents = self._combined_search(query, top_k)
 
+            # 4. 结果后处理
+            documents = self._post_process_results(documents, analysis)
+
+            logger.info(f"路由完成，返回 {len(documents)} 个结果")
+            return documents, analysis
+
         except Exception as e:
             logger.error(f"智能查询路由失败: {e}")
             # todo: 降级到传统检索策略
@@ -235,7 +241,7 @@ class IntelligentQueryRouterModule:
                 traditional_docs = []
 
         def graph_search():
-            # todo: 图RAG检索
+            # 图RAG检索
             nonlocal graph_docs
             try:
                 graph_docs = self.graph_rag_retrieval.graph_rag_search(query, graph_k)

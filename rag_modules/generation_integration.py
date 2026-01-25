@@ -133,11 +133,13 @@ class GenerationIntegrationModule:
             try:
                 response = self.client.chat.completions.create(
                     model=self.model_name,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ],
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
                     stream=True,
-                    timeout=60
+                    timeout=60  # 增加超时设置
                 )
 
                 if attempt == 0:

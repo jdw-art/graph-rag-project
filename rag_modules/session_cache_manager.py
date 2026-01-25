@@ -56,7 +56,7 @@ class SessionCacheManager:
 
         try:
             # 计算查询向量
-            query_embedding = self.embedding_model.encode([query])[0]
+            query_embedding = self.embedding_model.embed_query(query)
         except Exception as e:
             logger.warning(f"查询向量计算失败: {e}")
             return None
@@ -107,7 +107,7 @@ class SessionCacheManager:
                 del session_embeddings[oldest_key]
 
             # 计算查询向量
-            query_embedding = self.embedding_model.encode([query])[0]
+            query_embedding = self.embedding_model.embed_query(query)
 
             # 添加到缓存
             session_cache[query] = {

@@ -74,31 +74,31 @@ class WebServiceHandlerModule:
         def chat():
             """聊天API，普通响应"""
             # 标准输出
-            self._handle_chat_request()
+            return self._handle_chat_request()
 
         @self.app.route('/api/chat/stream', methods=['POST'])
         def chat_stream():
             """聊天API，流式响应"""
             # 流式输出
-            self._handle_stream_request()
+            return self._handle_stream_request()
 
         @self.app.route('/api/recipes/recommendation', methods=['GET'])
         def get_recommendations():
             """获取菜谱推荐"""
             # 菜谱推荐
-            self._handle_recommendations_request()
+            return self._handle_recommendations_request()
 
         @self.app.route('/api/recipes/<recipe_id>', methods=['GET'])
         def get_recipe_detail(recipe_id):
             """获取菜谱详情"""
             # 菜谱详情
-            self._handle_recipe_detail_request(recipe_id)
+            return self._handle_recipe_detail_request(recipe_id)
 
         @self.app.route('/api/stats', methods=['GET'])
         def get_stats():
             """获取系统统计信息"""
             # 统计信息
-            self._handle_stats_request()
+            return self._handle_stats_request()
 
     def _serve_static_file(self, filename):
         """提供静态文件服务"""

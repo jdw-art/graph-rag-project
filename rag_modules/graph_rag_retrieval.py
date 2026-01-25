@@ -303,10 +303,10 @@ class GraphRagRetrievalModule:
                 # 简化的子图提取，不依赖APOC
                 cypher_query = f"""
                 // 找到源实体
-                UNWIND $source_entities as source_name
+                UNWIND $source_entities as entity_name
                 MATCH (source)
-                WHERE source.name CONTAINS entity_name
-                      OR source_nodeId = entity_name
+                WHERE source.name CONTAINS entity_name 
+                   OR source.nodeId = entity_name
                       
                 // 获取指定深度的邻居
                 MATCH (source)-[r*1..{graph_query.max_depth}]-(neighbor)
@@ -332,7 +332,7 @@ class GraphRagRetrievalModule:
 
                 result = session.run(cypher_query, {
                     "source_entities": graph_query.source_entities,
-                    "max_depth": graph_query.max_nodes
+                    "max_nodes": graph_query.max_nodes
                 })
 
                 record = result.single()
@@ -593,6 +593,28 @@ class GraphRagRetrievalModule:
         documents.append(doc)
 
         return documents
+
+    def _build_path_description(self, path: GraphPath) -> str:
+        """构建路径的自然语言描述"""
+        if not path.nodes:
+            return "空路径"
+
+        desc_parts = []
+        for i, node in enumerate(path.nodes):
+            desc_parts.append(node.get("name", f"节点{i}"))
+            if i < len(path.relationships):
+                rel_type = path.relationships[i].get("type", "相关")
+                desc_parts.append(f" --{rel_type}--> ")
+
+        return "".join(desc_parts)
+
+    def _build_subgraph_description(self, subgraph: KnowledgeSubgraph) -> str:
+        """构建子图的自然语言描述"""
+        central_names = [node.get("name", "未知") for node in subgraph.central_nodes]
+        node_count = len(subgraph.connected_nodes)
+        rel_count = len(subgraph.relationships)
+
+        return f"关于 {', '.join(central_names)} 的知识网络，包含 {node_count} 个相关概念和 {rel_count} 个关系。"
 
     def _rank_by_graph_relevance(self, documents: List[Document], query: str) -> List[Document]:
         """基于图结构相关性排序"""

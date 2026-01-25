@@ -321,7 +321,7 @@ class MilvusIndexConstructionModule:
 
         try:
             # 生成查询向量
-            query_vector = self.embeddings.embed_documents(query)
+            query_vector = self.embeddings.embed_query(query)
 
             # 构建过滤表达式
             filter_expr = ""
@@ -356,9 +356,9 @@ class MilvusIndexConstructionModule:
                 "data": [query_vector],
                 "anns_field": "vector",
                 "limit": k,
-                "output_field": ["text", "node_id", "recipe_name", "node_type",
-                                 "category", "cuisine_type", "difficulty", "doc_type",
-                                 "chunk_id", "parent_id"],
+                "output_fields": ["text", "node_id", "recipe_name", "node_type",
+                                "category", "cuisine_type", "difficulty", "doc_type",
+                                "chunk_id", "parent_id"],
                 "search_params": search_params
             }
 
